@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 import rospy
 from sensor_msgs.msg import LaserScan
@@ -26,7 +26,7 @@ state_dict_ = {
     2: 'follow the wall',
 }
 
-
+'''
 def wall_follower_switch(req): # service server
     global active_
     active_ = req.data
@@ -34,19 +34,22 @@ def wall_follower_switch(req): # service server
     res.success = True
     res.message = 'Done!'
     return res
+'''
 
 
 def clbk_laser(msg): # callback of laserscaner
+    range_front = msg.ranges[0:72] + msg.ranges[648:720]
     global regions_
     regions_ = {
-        'right':  min(min(msg.ranges[0:143]), 10),
-        'fright': min(min(msg.ranges[144:287]), 10),
-        'front':  min(min(msg.ranges[288:431]), 10),
-        'fleft':  min(min(msg.ranges[432:575]), 10),
-        'left':   min(min(msg.ranges[576:713]), 10),
+        'right':  min(min(msg.ranges[450:504]), 10),
+        'fright': min(min(msg.ranges[504:648]), 10),
+        'front':  min(min(range_front), 10),
+        'fleft':  min(min(msg.ranges[72:216]), 10),
+        'left':   min(min(msg.ranges[216:270]), 10),
     }
 
     take_action()
+    rospy.loginfo(regions_['front'])
 
 
 def change_state(state):
@@ -64,8 +67,8 @@ def take_action(): # called by clbk_laser
     angular_z = 0
     state_description = ''
 
-    d0 = 1
-    d = 1.5
+    d0 = 0.5 # for front
+    d = 0.6 # for other regions
 
     if regions['front'] > d0 and regions['fleft'] > d and regions['fright'] > d:
         state_description = 'case 1 - nothing'
@@ -96,7 +99,7 @@ def take_action(): # called by clbk_laser
         rospy.loginfo(regions)
 
 
-def find_wall(): # implement PD control?
+def find_wall(): # implement PD control? could be integrated with follow the wall
     msg = Twist()
     msg.linear.x = 0.2
     msg.angular.z = -0.3
@@ -126,10 +129,11 @@ def main():
 
     sub = rospy.Subscriber('/scan', LaserScan, clbk_laser)
 
-    srv = rospy.Service('wall_follower_switch', SetBool, wall_follower_switch)
+    # srv = rospy.Service('wall_follower_switch', SetBool, wall_follower_switch)
 
     rate = rospy.Rate(20)
     while not rospy.is_shutdown():
+        '''
         if not active_:
             rate.sleep()
             continue
@@ -145,6 +149,21 @@ def main():
                 rospy.logerr('Unknown state!')
 
             pub_.publish(msg)
+
+        rate.sleep()
+        '''
+
+        msg = Twist()
+        if state_ == 0:
+            msg = find_wall() # important I guess
+        elif state_ == 1:
+            msg = turn_left()
+        elif state_ == 2:
+            msg = follow_the_wall()
+        else:
+            rospy.logerr('Unknown state!')
+
+        pub_.publish(msg)
 
         rate.sleep()
 
